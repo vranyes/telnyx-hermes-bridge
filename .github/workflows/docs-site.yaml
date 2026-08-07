@@ -1,0 +1,24 @@
+---
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.14"
+    - name: Install regctl
+      run: make regctl
+    - name: Build and push docs site
+      run: make site-image
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+name: build-and-push-docs
+'on':
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch: null
+permissions:
+  contents: read
+  packages: write

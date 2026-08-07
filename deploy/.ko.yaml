@@ -1,0 +1,16 @@
+---
+# ko build configuration. Build/push with:
+#
+#   ko build --platform=linux/amd64,linux/arm64 ./cmd/gateway --push \
+#     --tarball=... or push to the existing Zot registry
+#
+# The gateway is static and distroless-friendly (CGO disabled, no deps).
+baseImageOverrides:
+  github.com/vranyes/telnyx-hermes-bridge/cmd/gateway: cgr.dev/chainguard/static:latest
+defaultBaseImage: cgr.dev/chainguard/static:latest
+
+builds:
+- id: gateway
+  main: ./cmd/gateway
+  env:
+  - CGO_ENABLED=0

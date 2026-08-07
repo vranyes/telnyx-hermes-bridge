@@ -1,0 +1,18 @@
+---
+docs_dir: docs
+nav:
+- Overview: index.md
+- Glossary: glossary.md
+- ADRs:
+  - 0001 ServiceAccount auth for /actions: adr/0001-serviceaccount-auth-for-actions.md
+  - 0002 Conversational confirmation (no PIN): adr/0002-conversational-confirmation-no-pin.md
+  - 0003 Voice canned fallback: adr/0003-voice-canned-fallback.md
+  - 0004 MVP reliability posture: adr/0004-mvp-reliability-posture.md
+  - 0005 Voice path managed STT: adr/0005-voice-path-managed-stt.md
+  - 0006 Hermes OpenAI API and Telnyx MCP: adr/0006-hermes-openai-api-and-telnyx-mcp.md
+- Legal:
+  - Privacy Policy: privacy.md
+  - Terms & Conditions: terms.md
+site_name: Telnyx-Hermes Bridge
+theme:
+  name: material

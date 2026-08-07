@@ -1,0 +1,132 @@
+---
+# Hermes gateway deployment (MVP: single replica, in-memory state, SMS-only).
+#
+# ADR-0006 governs: the gateway is a pure relay — inbound SMS → one
+# synchronous chat/completions turn against Hermes → final assistant text
+# auto-sent back to the caller. No /actions, no OIDC, no voice path, no
+# ServiceAccount token projection. No ServiceAccount resource is required.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hermes-gateway
+  namespace: hermes
+type: Opaque
+stringData:
+  # REPLACE with real values (see deploy/README.md for sources).
+  TELNYX_API_KEY: REPLACE_ME # Telnyx API key for sending SMS (from Telnyx portal)
+  API_SERVER_KEY: REPLACE_ME # shared bearer secret on Hermes's OpenAI API
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hermes-gateway
+  namespace: hermes
+data:
+  TELNYX_PUBLIC_KEY: REPLACE_ME # base64 Ed25519 key from Telnyx portal
+  TELNYX_FROM_NUMBER: REPLACE_ME # e.g. +15559876543 — the gateway's sender
+  GATEWAY_ADDR: ":8080"
+  ALLOWLIST: REPLACE_ME # caller allowlist; comma-separated
+  HERMES_BASE_URL: "http://hermes-api-svc.hermes.svc.cluster.local:8642"
+  LOG_LEVEL: "info"
+  # TELNYX_BASE_URL is unset to use the default https://api.telnyx.com/v2.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-gateway
+  namespace: hermes
+spec:
+  replicas: 1 # MVP is single-replica; scaling blocked until rolling-window/queue state is sticky or durable (ADR-0004)
+  selector:
+    matchLabels:
+      app: hermes-gateway
+  template:
+    metadata:
+      labels:
+        app: hermes-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+      - name: gateway
+        image: ghcr.io/vranyes/telnyx-hermes-bridge/gateway:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+        envFrom:
+        - secretRef:
+            name: hermes-gateway
+        - configMapRef:
+            name: hermes-gateway
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: http
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hermes-gateway
+  namespace: hermes
+spec:
+  selector:
+    app: hermes-gateway
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: hermes-gateway
+  namespace: hermes
+spec:
+  hostnames:
+  - api.vranyes.com
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: traefik-gateway
+    namespace: traefik
+  rules:
+  - backendRefs:
+    - group: ""
+      kind: Service
+      name: hermes-gateway
+      port: 80
+      weight: 1
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /
+    matches:
+    - path:
+        type: PathPrefix
+        value: /assistant
+
+# Path routing note: the Telnyx webhook URL in the portal
+# (deploy/README.md §3) is the root path — https://<ingress>/webhooks/telnyx/sms
+# — so this route must match "/", not a prefixed path. The gateway itself does
+# not strip prefixes. /healthz and /readyz are expose-only for probes;
+# /metrics exposes no secrets. There is no /actions endpoint and no
+# cluster-internal money-spending surface (ADR-0006 §4) — the ServiceAccount
+# resource, OIDC issuer, and NetworkPolicy considerations from the previous
+# design do not apply.
